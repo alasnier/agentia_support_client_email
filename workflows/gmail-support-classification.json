@@ -1,0 +1,119 @@
+{
+  "name": "Gmail Support Client - Lecture Emails",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "includeSpamTrash": false,
+          "labelIds": [
+            "INBOX"
+          ]
+        },
+        "options": {
+          "downloadAttachments": false
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "503d1c19-758c-44c2-9f5f-2434c8a5abb7",
+      "name": "Gmail Agent IA Support Client",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "MmxpvhbiwHvAQZ7Y",
+          "name": "Gmail agent IA Support Client"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Récupérer les données de l'email\nconst items = $input.all();\n\nreturn items.map(item => {\n  const email = item.json;\n  \n  // Fonction helper pour extraire un header spécifique\n  const getHeader = (headerName) => {\n    if (!email.headers || !email.headers[headerName.toLowerCase().replace(/-/g, '-')]) {\n      return '';\n    }\n    \n    // Les headers sont sous forme \"Header-Name: valeur\"\n    const headerValue = email.headers[headerName.toLowerCase().replace(/-/g, '-')];\n    \n    // Enlever le préfixe \"Header-Name: \" si présent\n    if (typeof headerValue === 'string') {\n      const parts = headerValue.split(': ');\n      return parts.length > 1 ? parts.slice(1).join(': ') : headerValue;\n    }\n    \n    return headerValue || '';\n  };\n  \n  // Extraire le body text (en priorité le texte brut)\n  const getEmailBody = () => {\n    // D'abord essayer le champ text\n    if (email.text && email.text.trim().length > 0) {\n      return email.text.trim();\n    }\n    \n    // Sinon, essayer de nettoyer le HTML\n    if (email.html) {\n      // Supprimer les balises HTML basiques pour avoir un aperçu\n      return email.html\n        .replace(/<style[^>]*>.*?<\\/style>/gis, '')\n        .replace(/<script[^>]*>.*?<\\/script>/gis, '')\n        .replace(/<[^>]+>/g, ' ')\n        .replace(/\\s+/g, ' ')\n        .trim()\n        .substring(0, 1000); // Limiter à 1000 caractères pour l'aperçu\n    }\n    \n    return '';\n  };\n  \n  return {\n    json: {\n      messageId: email.id || '',\n      threadId: email.threadId || '',\n      from: getHeader('from'),\n      to: getHeader('to'),\n      subject: getHeader('subject'),\n      date: getHeader('date'),\n      snippet: email.snippet || '',\n      bodyText: email.text || '',\n      bodyHtml: email.html || '',\n      bodyPreview: getEmailBody(),\n      labels: email.labelIds || [],\n      sizeEstimate: email.sizeEstimate || 0\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "1a50e3f3-ef27-4ecd-96f7-1343f9268ea1",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api-inference.huggingface.co/models/facebook/bart-large-mnli",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n    \"inputs\": {{ JSON.stringify($json.bodyText) }},\n    \"parameters\": {\n      \"candidate_labels\": [\n        \"support technique\",\n        \"question commerciale\", \n        \"demande information\",\n        \"spam\",\n        \"urgence\"\n      ]\n    }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        432,
+        0
+      ],
+      "id": "eada6810-23cf-444d-954e-2b639a1e9b64",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "w9a2YG8jJRcuaLYc",
+          "name": "Authorization"
+        },
+        "httpBearerAuth": {
+          "id": "veQ9YbtBu05c7Gxl",
+          "name": "Bearer HuggingFace Auth account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Agent IA Support Client": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f9ea5e05-4030-41a0-9d59-bc4eb93d98b8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d9f002b3e1c0672a6ee3d214274cc51c2461354c590ebe51c570175fe9d2933f"
+  },
+  "id": "gwh8tvsDhsHfhAZo",
+  "tags": []
+}
