@@ -1,4 +1,5 @@
 import json
+import sys
 from typing import List
 
 from mcp.server.fastmcp import FastMCP
@@ -7,9 +8,15 @@ from transformers import pipeline
 mcp = FastMCP(name="EmailClassifier")
 
 # Charger le modèle au démarrage (cache global)
-print("🔄 Loading classification model...", flush=True)
+# IMPORTANT: Ne pas utiliser print() - ça interfère avec le protocole MCP
+# À la place, écrire dans stderr
+sys.stderr.write("🔄 Loading classification model...\n")
+sys.stderr.flush()
+
 classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli", device=-1)
-print("✅ Model loaded!", flush=True)
+
+sys.stderr.write("✅ Model loaded!\n")
+sys.stderr.flush()
 
 
 @mcp.tool()

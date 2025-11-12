@@ -1,10 +1,11 @@
 import json
+import sys
 
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP(name="ResponseGenerator")
 
-# Templates de réponses
+# Templates de réponses (inchangé)
 RESPONSE_TEMPLATES = {
     "support technique": """Bonjour,
 
@@ -59,7 +60,7 @@ Cordialement,
 L'équipe Support Prioritaire
 """,
 
-    "spam": None  # Pas de réponse pour le spam
+    "spam": None
 }
 
 
@@ -70,26 +71,14 @@ async def generate_response(
         confidence: float,
         min_confidence: float = 0.5
 ) -> str:
-    """
-    Génère une réponse automatique basée sur la catégorie.
+    """Génère une réponse automatique basée sur la catégorie."""
 
-    Args:
-        category: Catégorie de l'email
-        subject: Sujet de l'email original
-        confidence: Score de confiance de la classification
-        min_confidence: Seuil minimum pour envoyer automatiquement
-
-    Returns:
-        JSON string avec la réponse générée et les métadonnées
-    """
-
-    # Déterminer si on doit envoyer automatiquement
     should_send_auto = False
 
     if category == "urgence":
-        should_send_auto = True  # Toujours envoyer pour urgence
+        should_send_auto = True
     elif category == "spam":
-        should_send_auto = False  # Jamais envoyer pour spam
+        should_send_auto = False
     elif category == "support technique":
         should_send_auto = confidence > 0.7
     elif category == "question commerciale":
@@ -99,7 +88,6 @@ async def generate_response(
     else:
         should_send_auto = confidence > min_confidence
 
-    # Générer le corps de la réponse
     template = RESPONSE_TEMPLATES.get(category)
 
     if template is None:
@@ -107,7 +95,6 @@ async def generate_response(
     else:
         response_body = template.format(subject=subject)
 
-    # Déterminer la priorité
     if category == "urgence":
         priority = "critique"
     elif category == "support technique" and confidence > 0.7:
