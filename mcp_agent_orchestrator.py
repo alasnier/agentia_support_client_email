@@ -9,16 +9,19 @@ from mcp.client.stdio import stdio_client
 class GmailSupportAgent:
     """Agent de support client Gmail avec MCP."""
 
-    def __init__(self, min_confidence: float = 0.5, enable_security: bool = True):
+    def __init__(
+        self,
+        min_confidence: float = 0.5,
+        enable_security: bool = True,
+        draft_mode: bool = True,
+    ):
         self.min_confidence = min_confidence
         self.enable_security = enable_security
+        self.draft_mode = draft_mode  # NOUVEAU : Mode brouillon par défaut
         self.results = []
 
     async def process_emails(
-            self,
-            max_emails: int = 10,
-            auto_reply: bool = False,
-            dry_run: bool = True
+        self, max_emails: int = 10, auto_reply: bool = False, dry_run: bool = True
     ):
         """
         Pipeline complet de traitement des emails.
@@ -31,9 +34,12 @@ class GmailSupportAgent:
         print("=" * 70)
         print("🚀 Gmail Support Agent - MCP Pipeline")
         print("=" * 70)
-        print(f"📊 Config: max_emails={max_emails}, auto_reply={auto_reply}, dry_run={dry_run}")
+        print(
+            f"📊 Config: max_emails={max_emails}, auto_reply={auto_reply}, dry_run={dry_run}"
+        )
         print(f"🎯 Min confidence: {self.min_confidence:.0%}")
         print(f"🔒 Security: {'ENABLED' if self.enable_security else 'DISABLED'}")
+        print(f"📝 Mode: {'DRAFT' if self.draft_mode else 'DIRECT SEND'}")  # NOUVEAU
         print("=" * 70)
 
         # Paramètres des serveurs MCP
@@ -62,8 +68,13 @@ class GmailSupportAgent:
                             async with ClientSession(rr, rw) as response_session:
                                 async with stdio_client(sender_params) as (sr, sw):
                                     async with ClientSession(sr, sw) as sender_session:
-                                        async with stdio_client(security_params) as (secr, secw):
-                                            async with ClientSession(secr, secw) as security_session:
+                                        async with stdio_client(security_params) as (
+                                            secr,
+                                            secw,
+                                        ):
+                                            async with ClientSession(
+                                                secr, secw
+                                            ) as security_session:
                                                 # Initialiser les sessions
                                                 await gmail_session.initialize()
                                                 await class_session.initialize()
@@ -72,9 +83,13 @@ class GmailSupportAgent:
 
                                                 if self.enable_security:
                                                     await security_session.initialize()
-                                                    print("\n✅ All MCP servers connected (including security)!\n")
+                                                    print(
+                                                        "\n✅ All MCP servers connected (including security)!\n"
+                                                    )
                                                 else:
-                                                    print("\n✅ All MCP servers connected!\n")
+                                                    print(
+                                                        "\n✅ All MCP servers connected!\n"
+                                                    )
 
                                                 # Traiter les emails
                                                 await self._process_pipeline(
@@ -82,22 +97,24 @@ class GmailSupportAgent:
                                                     class_session,
                                                     response_session,
                                                     sender_session,
-                                                    security_session if self.enable_security else None,
+                                                    security_session
+                                                    if self.enable_security
+                                                    else None,
                                                     max_emails,
                                                     auto_reply,
-                                                    dry_run
+                                                    dry_run,
                                                 )
 
     async def _process_pipeline(
-            self,
-            gmail_session,
-            class_session,
-            response_session,
-            sender_session,
-            security_session,
-            max_emails,
-            auto_reply,
-            dry_run
+        self,
+        gmail_session,
+        class_session,
+        response_session,
+        sender_session,
+        security_session,
+        max_emails,
+        auto_reply,
+        dry_run,
     ):
         """Pipeline de traitement."""
 
@@ -109,8 +126,6 @@ class GmailSupportAgent:
 
         try:
             emails_json = emails_result.content[0].text
-            sys.stderr.write(f"DEBUG: Gmail response: {emails_json[:200]}...\n")
-            sys.stderr.flush()
             emails_data = json.loads(emails_json)
 
             # Vérifier si c'est une erreur
@@ -129,6 +144,8 @@ class GmailSupportAgent:
         blocked_count = 0
         warning_count = 0
         safe_count = 0
+        draft_created_count = 0
+        sent_count = 0
 
         # 2. Traiter chaque email
         for i, email in enumerate(emails_data, 1):
@@ -154,9 +171,9 @@ class GmailSupportAgent:
                             "metadata": {
                                 "id": email.get("id"),
                                 "subject": email.get("subject"),
-                                "date": email.get("date")
-                            }
-                        }
+                                "date": email.get("date"),
+                            },
+                        },
                     )
                     security_data = json.loads(security_result.content[0].text)
 
@@ -175,17 +192,22 @@ class GmailSupportAgent:
                         print("   🚫 Blocking this email from processing")
 
                         # Ne pas traiter les emails dangereux
-                        self.results.append({
-                            "email": email,
-                            "classification": {"category": "BLOCKED", "confidence": 0},
-                            "response": {
-                                "action": "Email blocked for security",
-                                "priority": "blocked",
-                                "should_send_auto": False,
-                                "response_body": None
-                            },
-                            "security": security_data
-                        })
+                        self.results.append(
+                            {
+                                "email": email,
+                                "classification": {
+                                    "category": "BLOCKED",
+                                    "confidence": 0,
+                                },
+                                "response": {
+                                    "action": "Email blocked for security",
+                                    "priority": "blocked",
+                                    "should_send_auto": False,
+                                    "response_body": None,
+                                },
+                                "security": security_data,
+                            }
+                        )
                         continue  # Passer à l'email suivant
 
                     elif security_level == "WARNING":
@@ -198,7 +220,10 @@ class GmailSupportAgent:
                         safe_count += 1
 
                     # Utiliser le contenu nettoyé pour la classification
-                    if "sanitized_content" in security_data and "text" in security_data["sanitized_content"]:
+                    if (
+                        "sanitized_content" in security_data
+                        and "text" in security_data["sanitized_content"]
+                    ):
                         text = security_data["sanitized_content"]["text"]
 
                 except Exception as e:
@@ -207,7 +232,7 @@ class GmailSupportAgent:
                     security_data = {
                         "security_level": "UNKNOWN",
                         "security_score": 0,
-                        "error": str(e)
+                        "error": str(e),
                     }
             # === FIN SCAN DE SÉCURITÉ ===
 
@@ -240,8 +265,8 @@ class GmailSupportAgent:
                         "category": category,
                         "subject": email.get("subject", ""),
                         "confidence": confidence,
-                        "min_confidence": self.min_confidence
-                    }
+                        "min_confidence": self.min_confidence,
+                    },
                 )
                 response_data = json.loads(response_result.content[0].text)
 
@@ -255,51 +280,94 @@ class GmailSupportAgent:
                 print(f"   ❌ Response generation failed: {e}")
                 continue
 
-            # 2c. Envoyer si auto_reply activé
+            # 2c. Créer brouillon ou envoyer si auto_reply activé
             # Ne pas envoyer si l'email a un niveau de sécurité WARNING
             if security_data and security_data.get("security_level") == "WARNING":
-                print(f"   ⚠️  Auto-reply disabled for security WARNING")
+                print("   ⚠️  Auto-reply disabled for security WARNING")
                 should_send = False
 
             if auto_reply and should_send and response_data["response_body"]:
                 if dry_run:
-                    print(f"   🧪 [DRY RUN] Would send auto-reply")
+                    # Mode simulation
+                    if self.draft_mode:
+                        print("   🧪 [DRY RUN] Would create draft")
+                    else:
+                        print("   🧪 [DRY RUN] Would send email directly")
                 else:
-                    print(f"   📤 Sending auto-reply...")
+                    # Mode réel
                     try:
-                        send_result = await sender_session.call_tool(
-                            "send_email",
-                            arguments={
-                                "to": email.get("from", ""),
-                                "subject": email.get("subject", ""),
-                                "body": response_data["response_body"],
-                                "thread_id": email.get("threadId"),
-                                "message_id": email.get("id")
-                            }
-                        )
-                        send_data = json.loads(send_result.content[0].text)
+                        # NOUVEAU : Choix entre draft et envoi direct
+                        if self.draft_mode:
+                            print("   📝 Creating draft...")
+                            result = await sender_session.call_tool(
+                                "create_draft",
+                                arguments={
+                                    "to": email.get("from", ""),
+                                    "subject": email.get("subject", ""),
+                                    "body": response_data["response_body"],
+                                    "thread_id": email.get("threadId"),
+                                    "message_id": email.get("id"),
+                                },
+                            )
+                            result_data = json.loads(result.content[0].text)
 
-                        if send_data["success"]:
-                            print(f"   ✅ Email sent successfully!")
+                            if result_data["success"]:
+                                print("   ✅ Draft created successfully!")
+                                print(f"      Draft ID: {result_data.get('draft_id')}")
+                                draft_created_count += 1
+                            else:
+                                print(
+                                    f"   ❌ Failed to create draft: {result_data.get('error')}"
+                                )
                         else:
-                            print(f"   ❌ Failed to send: {send_data.get('error')}")
+                            print("   📤 Sending email directly...")
+                            result = await sender_session.call_tool(
+                                "send_email",
+                                arguments={
+                                    "to": email.get("from", ""),
+                                    "subject": email.get("subject", ""),
+                                    "body": response_data["response_body"],
+                                    "thread_id": email.get("threadId"),
+                                    "message_id": email.get("id"),
+                                },
+                            )
+                            result_data = json.loads(result.content[0].text)
+
+                            if result_data["success"]:
+                                print("   ✅ Email sent successfully!")
+                                sent_count += 1
+                            else:
+                                print(
+                                    f"   ❌ Failed to send: {result_data.get('error')}"
+                                )
                     except Exception as e:
-                        print(f"   ❌ Error sending: {e}")
+                        print(f"   ❌ Error: {e}")
             elif should_send and not auto_reply:
-                print(f"   ℹ️  Auto-reply disabled (use --auto-reply to enable)")
+                print("   ℹ️  Auto-reply disabled (use --auto-reply to enable)")
 
             # Sauvegarder les résultats
-            self.results.append({
-                "email": email,
-                "classification": class_data,
-                "response": response_data,
-                "security": security_data
-            })
+            self.results.append(
+                {
+                    "email": email,
+                    "classification": class_data,
+                    "response": response_data,
+                    "security": security_data,
+                }
+            )
 
         # 3. Résumé
-        self._print_summary(blocked_count, warning_count, safe_count)
+        self._print_summary(
+            blocked_count, warning_count, safe_count, draft_created_count, sent_count
+        )
 
-    def _print_summary(self, blocked_count: int = 0, warning_count: int = 0, safe_count: int = 0):
+    def _print_summary(
+        self,
+        blocked_count: int = 0,
+        warning_count: int = 0,
+        safe_count: int = 0,
+        draft_count: int = 0,
+        sent_count: int = 0,
+    ):
         """Affiche le résumé."""
         print("\n" + "=" * 70)
         print("📊 SUMMARY")
@@ -335,6 +403,14 @@ class GmailSupportAgent:
         for cat, count in sorted(category_counts.items()):
             print(f"   • {cat}: {count} email(s)")
 
+        # NOUVEAU : Stats drafts/sent
+        if draft_count > 0 or sent_count > 0:
+            print("\n📧 Actions Taken:")
+            if draft_count > 0:
+                print(f"   📝 Drafts created: {draft_count}")
+            if sent_count > 0:
+                print(f"   📤 Emails sent: {sent_count}")
+
         print(f"\n🤖 Auto-reply candidates: {auto_reply_count}")
         print(f"👤 Manual review needed: {manual_review_count}")
         print(f"📧 Total processed: {len(self.results)}")
@@ -346,23 +422,37 @@ async def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Gmail Support Agent with MCP")
-    parser.add_argument("--max-emails", type=int, default=10, help="Max emails to process")
+    parser.add_argument(
+        "--max-emails", type=int, default=10, help="Max emails to process"
+    )
     parser.add_argument("--auto-reply", action="store_true", help="Enable auto-reply")
-    parser.add_argument("--no-dry-run", action="store_true", help="Actually send emails")
-    parser.add_argument("--min-confidence", type=float, default=0.5, help="Min confidence (0-1)")
-    parser.add_argument("--no-security", action="store_true", help="Disable security scanning")
+    parser.add_argument(
+        "--no-dry-run", action="store_true", help="Actually send emails/drafts"
+    )
+    parser.add_argument(
+        "--min-confidence", type=float, default=0.5, help="Min confidence (0-1)"
+    )
+    parser.add_argument(
+        "--no-security", action="store_true", help="Disable security scanning"
+    )
+    parser.add_argument(
+        "--send-direct",
+        action="store_true",
+        help="Send emails directly instead of creating drafts",
+    )  # NOUVEAU
 
     args = parser.parse_args()
 
     agent = GmailSupportAgent(
         min_confidence=args.min_confidence,
-        enable_security=not args.no_security
+        enable_security=not args.no_security,
+        draft_mode=not args.send_direct,  # NOUVEAU : Mode brouillon par défaut
     )
 
     await agent.process_emails(
         max_emails=args.max_emails,
         auto_reply=args.auto_reply,
-        dry_run=not args.no_dry_run
+        dry_run=not args.no_dry_run,
     )
 
 
