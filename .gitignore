@@ -1,2 +1,13 @@
-credentials.json
+client_secret_gmail_mcp_local.json
 token.json
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
